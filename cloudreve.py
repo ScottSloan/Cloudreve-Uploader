@@ -5,11 +5,12 @@ import asyncio
 import aiohttp
 
 class CloudreveUploader:
-    def __init__(self, api_url: str, email: str, password: str, storage_policy_id: str):
+    def __init__(self, api_url: str, email: str, password: str, storage_policy_id: str, version: str):
         self.api_url = api_url
         self.email = email
         self.password = password
         self.storage_policy_id = storage_policy_id
+        self.version = version
 
         self.access_token = ""
 
@@ -25,7 +26,7 @@ class CloudreveUploader:
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=self.get_headers(), json=body) as resp:
+            async with session.post(url, headers = self.get_headers(), json = body) as resp:
                 data = await resp.json()
 
                 if data["code"] == 0:
@@ -35,7 +36,7 @@ class CloudreveUploader:
         url = f"{self.api_url}/file/upload"
 
         async with aiohttp.ClientSession() as session:
-            async with session.put(url, headers=self.get_headers(), json=self.get_upload_body(file_path)) as resp:
+            async with session.put(url, headers=self.get_headers(), json = self.get_upload_body(file_path)) as resp:
                 data = await resp.json()
 
                 if data["code"] == 0:
@@ -62,7 +63,7 @@ class CloudreveUploader:
                         "Content-Range": f"bytes {start}-{end}/{file_size}"
                     }
 
-                    async with session.put(upload_url, headers=headers, data=chunk_data) as resp:
+                    async with session.put(upload_url, headers = headers, data = chunk_data) as resp:
                         if resp.status in [200, 201]:
                             return await resp.json()
                         elif resp.status in [202]:
@@ -74,13 +75,25 @@ class CloudreveUploader:
         url = f"{self.api_url}/callback/onedrive/{session_id}/{callback_secret}"
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=self.get_headers()) as resp:
+            async with session.post(url, headers = self.get_headers()) as resp:
                 data = await resp.json()
 
                 if data["code"] == 0:
                     print(f"上传成功：{file_name}")
                 else:
                     print("回调上传失败：", data)
+
+    async def create_direct_link(self, file_list: list):
+        url = f"{self.api_url}/file/source"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.put(url, headers = self.get_headers(), json = self.get_uri_body(file_list)) as resp:
+                data = await resp.json()
+
+                if data["code"] == 0:
+                    return data["data"]
+                else:
+                    print("创建直链失败：", data)
 
     async def upload_file(self, file_path: str):
         session_info = await self.create_upload_session(file_path)
@@ -108,25 +121,36 @@ class CloudreveUploader:
             print("上传文件：", file_path)
             tasks.append(self.upload_file(file_path))
 
+        tasks.append(self.create_direct_link(file_list))
+
         await asyncio.gather(*tasks)
 
     def get_headers(self):
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
         }
-        if isinstance(self.access_token, str) and self.access_token:
+
+        if self.access_token:
             headers["Authorization"] = f"Bearer {self.access_token}"
+
         return headers
     
     def get_upload_body(self, file_path: str):
         return {
-            "uri": f"cloudreve://my/Bili23_Downloader/{version}/{os.path.basename(file_path)}",
+            "uri": f"cloudreve://my/Bili23_Downloader/{self.version}/{os.path.basename(file_path)}",
             "size": os.path.getsize(file_path),
             "policy_id": self.storage_policy_id,
             "last_modified": int(time.time() * 1000),
             "mime_type": self.generate_mime_type(file_path)
         }
     
+    def get_uri_body(self, file_list: list):
+        return {
+            "uris": [
+                f"cloudreve://my/Bili23_Downloader/{self.version}/{os.path.basename(file_name)}" for file_name in file_list
+            ]
+        }
+
     def generate_mime_type(self, file_path: str):
         mime_type, _ = mimetypes.guess_type(file_path)
         return mime_type
@@ -146,7 +170,7 @@ if __name__ == "__main__":
     ]
 
     async def main():
-        uploader = CloudreveUploader(cloudreve_api, cloudreve_email, cloudreve_password, cloudreve_storage_policy_id)
+        uploader = CloudreveUploader(cloudreve_api, cloudreve_email, cloudreve_password, cloudreve_storage_policy_id, version)
         await uploader.init()
         await uploader.upload_files(files_to_upload)
 
