@@ -115,15 +115,11 @@ class CloudreveUploader:
         await self.upload_callback(session_info["session_id"], session_info["callback_secret"], os.path.basename(file_path))
 
     async def upload_files(self, file_list: list):
-        tasks = []
-
         for file_path in file_list:
             print("上传文件：", file_path)
-            tasks.append(self.upload_file(file_path))
+            await self.upload_file(file_path)
 
-        tasks.append(self.create_direct_link(file_list))
-
-        await asyncio.gather(*tasks)
+        await self.create_direct_link(file_list)
 
     def get_headers(self):
         headers = {
