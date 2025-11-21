@@ -47,29 +47,43 @@ class CloudreveUploader:
                     }
 
     async def upload_file_in_chunks(self, upload_url: str, file_path: str, chunk_size: int = 3276800):
-        file_size = os.path.getsize(file_path)
+            file_size = os.path.getsize(file_path)
 
-        async with aiohttp.ClientSession() as session:
-            with open(file_path, "rb") as f:
-                start = 0
+            async with aiohttp.ClientSession() as session:
+                with open(file_path, "rb") as f:
+                    start = 0
 
-                while start < file_size:
-                    end = min(start + chunk_size, file_size) - 1
-                    f.seek(start)
-                    chunk_data = f.read(end - start + 1)
+                    while start < file_size:
+                        end = min(start + chunk_size, file_size) - 1
+                        f.seek(start)
+                        chunk_data = f.read(end - start + 1)
 
-                    headers = {
-                        "Content-Length": str(end - start + 1),
-                        "Content-Range": f"bytes {start}-{end}/{file_size}"
-                    }
+                        headers = {
+                            "Content-Length": str(end - start + 1),
+                            "Content-Range": f"bytes {start}-{end}/{file_size}"
+                        }
 
-                    async with session.put(upload_url, headers = headers, data = chunk_data) as resp:
-                        if resp.status in [200, 201]:
-                            return await resp.json()
-                        elif resp.status in [202]:
-                            start = end + 1
-                        else:
-                            return None
+                        max_retries = 3
+                        for attempt in range(max_retries):
+                            try:
+                                async with session.put(upload_url, headers = headers, data = chunk_data) as resp:
+                                    if resp.status in [200, 201]:
+                                        return await resp.json()
+                                    elif resp.status in [202]:
+                                        start = end + 1
+                                        break
+                                    else:
+                                        if attempt == max_retries - 1:
+                                            return None
+                                        else:
+                                            await asyncio.sleep(2)
+                            except Exception as e:
+                                if attempt == max_retries - 1:
+                                    print(f"Chunk 上传失败，已重试 {max_retries} 次：", e)
+                                    return None
+                                else:
+                                    print(f"Chunk 上传异常，重试中：{e}")
+                                    await asyncio.sleep(2)
 
     async def upload_callback(self, session_id: str, callback_secret: str, file_name: str):
         url = f"{self.api_url}/callback/onedrive/{session_id}/{callback_secret}"
