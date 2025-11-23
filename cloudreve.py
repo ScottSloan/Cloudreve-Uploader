@@ -66,7 +66,7 @@ class CloudreveUploader:
                         max_retries = 3
                         for attempt in range(max_retries):
                             try:
-                                async with session.put(upload_url, headers = headers, data = chunk_data, timeout = 3) as resp:
+                                async with session.put(upload_url, headers = headers, data = chunk_data) as resp:
                                     if resp.status in [200, 201]:
                                         return await resp.json()
                                     elif resp.status in [202]:
